@@ -13,8 +13,8 @@
         <x-slot name="heading">
             Keranjang Belanja
         </x-slot>
-        
+
+        @livewire('checkout-page')
         @vite(['resources/css/app.css', 'resources/js/app.js'])  
-        <div id="cart-section"></div>
     </x-filament::section>
 </x-filament-panels::page>
