@@ -2,7 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Product;
+use App\Models\Transaction;
+use App\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Model;
+
 
 class TransactionItem extends Model
 {
@@ -26,5 +30,14 @@ class TransactionItem extends Model
     {
         return $this->belongsTo(Transaction::class);
     }
-}
 
+    public function product()
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant()
+    {
+        return $this->belongsTo(ProductVariant::class);
+    }
+}

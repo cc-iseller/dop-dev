@@ -12,7 +12,7 @@ use Filament\Actions\CreateAction;
 
 class ProductVariantRelationManager extends RelationManager
 {
-    protected static string $relationship = 'variants'; // HARUS cocok dengan Product::variants()
+    protected static string $relationship = 'variants';
 
     public function form(Schema $schema): Schema
     {
