@@ -3,10 +3,11 @@
 namespace App\Livewire;
 
 use Livewire\Component;
-use App\Models\Transaction;
-use App\Models\TransactionItem;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Transaction;
+use App\Models\TransactionItem;
+use App\Services\MidtransService;
 use Illuminate\Support\Facades\DB;
 use Filament\Notifications\Notification;
 
@@ -14,23 +15,28 @@ class ConfirmationPage extends Component
 {
     public array $cart = [];
     public ?string $customerName = null;
+    public string $paymentMethod = 'cash';
     public bool $isProcessing = false;
+    public ?string $snapToken = null;
 
-    public function mount()
+    /* =====================
+       MOUNT
+    ===================== */
+    public function mount(): void
     {
         $this->cart = session('cart', []);
 
         if (empty($this->cart)) {
-            return redirect()->route('filament.admin.pages.cashier-page');
+            redirect()->route('filament.admin.pages.cashier-page');
         }
     }
 
-    public function confirmPayment()
+    /* =====================
+       MAIN ACTION
+    ===================== */
+    public function confirmPayment(MidtransService $midtrans): void
     {
-        // Antisipasi duplikasi - cek jika sedang proses
-        if ($this->isProcessing) {
-            return;
-        }
+        if ($this->isProcessing) return;
 
         if (empty($this->cart)) {
             Notification::make()
@@ -40,139 +46,128 @@ class ConfirmationPage extends Component
             return;
         }
 
-        // Set flag processing
+        $stock = $this->validateStock();
+        if (! $stock['valid']) {
+            Notification::make()
+                ->title('Stok Tidak Cukup')
+                ->body($stock['message'])
+                ->danger()
+                ->send();
+            return;
+        }
+
         $this->isProcessing = true;
 
         try {
-            // Validasi stok terlebih dahulu
-            $stockValidation = $this->validateStock();
-            if (!$stockValidation['valid']) {
-                $this->isProcessing = false;
-                Notification::make()
-                    ->title('Stok Tidak Mencukupi')
-                    ->body($stockValidation['message'])
-                    ->danger()
-                    ->send();
-                return;
+            if ($this->paymentMethod === 'cash') {
+                $this->processCashPayment();
+            } else {
+                $this->processMidtransPayment($midtrans);
             }
+        } finally {
+            $this->isProcessing = false;
+        }
+    }
 
-            DB::beginTransaction();
+    /* =====================
+       CASH PAYMENT
+    ===================== */
+    private function processCashPayment(): void
+    {
+        DB::transaction(function () {
 
-            $totalItems = array_sum(array_column($this->cart, 'qty'));
-            $totalAmount = collect($this->cart)->sum(fn($item) => $item['price'] * $item['qty']);
+            $transaction = $this->createTransaction('cash', 'paid');
 
-            $transaction = Transaction::create([
-                'invoice_number' => $this->generateInvoiceNumber(),
-                'customer_name' => $this->customerName,
-                'payment_method' => 'cash',
-                'status' => 'paid',
-                'total_items' => $totalItems,
-                'total_amount' => $totalAmount,
-            ]);
-
-            // Simpan items dan update stok
             foreach ($this->cart as $item) {
                 $this->createTransactionItem($transaction, $item);
                 $this->updateStock($item);
             }
+        });
+
+        session()->forget('cart');
+
+        Notification::make()
+            ->title('Pembayaran Tunai Berhasil')
+            ->success()
+            ->send();
+
+        redirect()->route('filament.admin.pages.cashier-page');
+    }
+
+    /* =====================
+       MIDTRANS PAYMENT
+    ===================== */
+    private function processMidtransPayment(MidtransService $midtrans): void
+    {
+        DB::beginTransaction();
+
+        try {
+            $transaction = $this->createTransaction('midtrans', 'pending');
+
+            foreach ($this->cart as $item) {
+                // ❗ JANGAN update stok di sini
+                $this->createTransactionItem($transaction, $item);
+            }
+
+            $snapToken = $midtrans->createSnapToken($transaction);
+
+            $transaction->update([
+                'snap_token' => $snapToken,
+            ]);
 
             DB::commit();
 
-            // Clear cart dari session
-            session()->forget('cart');
+            $this->snapToken = $snapToken;
+            $this->dispatch('open-midtrans');
 
-            Notification::make()
-                ->title('Pembayaran Berhasil!')
-                ->body('Invoice: ' . $transaction->invoice_number)
-                ->success()
-                ->send();
-
-            // Reset flag
-            $this->isProcessing = false;
-
-            // Redirect ke cashier page
-            return redirect()->route('filament.admin.pages.cashier-page');
-
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
-            $this->isProcessing = false;
-            
+
             Notification::make()
-                ->title('Pembayaran Gagal')
+                ->title('Gagal Memproses Midtrans')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
         }
     }
 
-    private function validateStock(): array
+    /* =====================
+       HELPERS
+    ===================== */
+
+    private function createTransaction(string $method, string $status): Transaction
     {
-        foreach ($this->cart as $item) {
-            $productId = $item['product_id'];
-            $variantId = $item['variant_id'] ?? null;
-            $qty = $item['qty'];
-
-            if ($variantId) {
-                $variant = ProductVariant::find($variantId);
-                if (!$variant || $variant->stock < $qty) {
-                    return [
-                        'valid' => false,
-                        'message' => "Stok {$item['name']} tidak mencukupi. Tersedia: " . ($variant->stock ?? 0)
-                    ];
-                }
-            } else {
-                $product = Product::find($productId);
-                if (!$product || $product->base_stock < $qty) {
-                    return [
-                        'valid' => false,
-                        'message' => "Stok {$item['name']} tidak mencukupi. Tersedia: " . ($product->base_stock ?? 0)
-                    ];
-                }
-            }
-        }
-
-        return ['valid' => true];
+        return Transaction::create([
+            'invoice_number' => $this->generateInvoiceNumber(),
+            'customer_name' => $this->customerName,
+            'payment_method' => $method,
+            'status' => $status,
+            'total_items' => array_sum(array_column($this->cart, 'qty')),
+            'total_amount' => collect($this->cart)
+                ->sum(fn ($i) => $i['price'] * $i['qty']),
+        ]);
     }
 
-    private function updateStock(array $item): void
+    private function createTransactionItem(Transaction $transaction, array $item): void
     {
-        $productId = $item['product_id'];
-        $variantId = $item['variant_id'] ?? null;
-        $qty = $item['qty'];
-
-        if ($variantId) {
-            // Update stok variant
-            ProductVariant::where('id', $variantId)
-                ->decrement('stock', $qty);
-        } else {
-            // Update stok base product
-            Product::where('id', $productId)
-                ->decrement('base_stock', $qty);
-        }
-    }
-
-    private function createTransactionItem(Transaction $transaction, array $item)
-    {
-        $productId = $item['product_id'];
         $variantId = $item['variant_id'] ?? null;
 
-        // Ambil data SKU dan variant snapshot
         if ($variantId) {
             $variant = ProductVariant::with('product')->find($variantId);
-            $sku = $variant->sku ?? null;
+            $sku = $variant?->sku;
             $variantSnapshot = [
-                'size' => $variant->size ?? null,
-                'color' => $variant->color ?? null,
+                'size' => $variant?->size,
+                'color' => $variant?->color,
             ];
         } else {
-            $product = Product::find($productId);
-            $sku = $product->base_sku ?? null;
+            $product = Product::find($item['product_id']);
+            $sku = $product?->base_sku;
             $variantSnapshot = null;
         }
 
         TransactionItem::create([
             'transaction_id' => $transaction->id,
-            'product_id' => $productId,
+            'product_id' => $item['product_id'],
             'product_variant_id' => $variantId,
             'product_name_snapshot' => $item['name'],
             'sku_snapshot' => $sku,
@@ -183,21 +178,46 @@ class ConfirmationPage extends Component
         ]);
     }
 
-    private function generateInvoiceNumber(): string
+    private function updateStock(array $item): void
     {
-        $date = now()->format('Ymd');
-        $lastTransaction = Transaction::whereDate('created_at', today())
-            ->latest('id')
-            ->first();
-
-        $sequence = $lastTransaction ? (int) substr($lastTransaction->invoice_number, -4) + 1 : 1;
-
-        return 'INV-' . $date . '-' . str_pad($sequence, 4, '0', STR_PAD_LEFT);
+        if (!empty($item['variant_id'])) {
+            ProductVariant::where('id', $item['variant_id'])
+                ->decrement('stock', $item['qty']);
+        } else {
+            Product::where('id', $item['product_id'])
+                ->decrement('base_stock', $item['qty']);
+        }
     }
 
-    public function goBack()
+    private function validateStock(): array
     {
-        return redirect()->route('filament.admin.pages.cashier-page');
+        foreach ($this->cart as $item) {
+            $qty = $item['qty'];
+
+            if (!empty($item['variant_id'])) {
+                $variant = ProductVariant::find($item['variant_id']);
+                if (!$variant || $variant->stock < $qty) {
+                    return ['valid' => false, 'message' => "Stok {$item['name']} tidak mencukupi"];
+                }
+            } else {
+                $product = Product::find($item['product_id']);
+                if (!$product || $product->base_stock < $qty) {
+                    return ['valid' => false, 'message' => "Stok {$item['name']} tidak mencukupi"];
+                }
+            }
+        }
+
+        return ['valid' => true];
+    }
+
+    private function generateInvoiceNumber(): string
+    {
+        return 'INV-' . now()->format('Ymd-His') . '-' . rand(100, 999);
+    }
+
+    public function goBack(): void
+    {
+        redirect()->route('filament.admin.pages.cashier-page');
     }
 
     public function render()

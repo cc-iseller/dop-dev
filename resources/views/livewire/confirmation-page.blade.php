@@ -34,61 +34,73 @@
 
             <!-- SUMMARY -->
             @php
-                $subtotal = collect($cart)->sum(fn ($item) => $item['price'] * $item['qty']);
-                $total = $subtotal;
+                $total = collect($cart)->sum(fn ($item) => $item['price'] * $item['qty']);
             @endphp
 
             <div class="border-t border-gray-700 pt-4 space-y-2 text-sm">
                 <div class="flex justify-between text-gray-300">
-                    <span>Subtotal</span>
-                    <span>Rp {{ number_format($subtotal, 0, ',', '.') }}</span>
-                </div>
-
-                <div class="flex justify-between text-white font-semibold text-base">
                     <span>Total</span>
                     <span>Rp {{ number_format($total, 0, ',', '.') }}</span>
                 </div>
             </div>
 
-            <!-- PAYMENT METHOD (DUMMY) -->
+            <!-- PAYMENT METHOD -->
             <div class="space-y-2">
                 <h3 class="text-white font-medium text-sm">
                     Metode Pembayaran
                 </h3>
 
-                <div class="space-y-2">
-                    <label class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer">
-                        <input type="radio" checked class="text-blue-600">
-                        <span class="text-white text-sm">Tunai</span>
-                    </label>
+                <!-- CASH -->
+                <label class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer">
+                    <input
+                        type="radio"
+                        wire:model="paymentMethod"
+                        value="cash"
+                        class="text-blue-600"
+                    >
+                    <span class="text-white text-sm">Tunai (Cash)</span>
+                </label>
 
-                    <label class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer opacity-50">
-                        <input type="radio" disabled>
-                        <span class="text-white text-sm">QRIS (Coming Soon)</span>
-                    </label>
-
-                    <label class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer opacity-50">
-                        <input type="radio" disabled>
-                        <span class="text-white text-sm">Transfer Bank (Coming Soon)</span>
-                    </label>
-                </div>
+                <!-- MIDTRANS -->
+                <label class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer">
+                    <input
+                        type="radio"
+                        wire:model="paymentMethod"
+                        value="midtrans"
+                        class="text-blue-600"
+                    >
+                    <span class="text-white text-sm">
+                        Non Tunai (QRIS / VA / E-Wallet)
+                    </span>
+                </label>
             </div>
 
-             <!-- ACTION -->
+            <!-- ACTION -->
             <div class="flex gap-3">
-                <a href="" wire:click.prevent="goBack" class="w-1/2 text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">
+                <button
+                    wire:click="goBack"
+                    type="button"
+                    class="w-1/2 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm"
+                >
                     Kembali
-                </a>
+                </button>
 
-                <button 
-                    wire:click="confirmPayment" 
+                <button
+                    wire:click="confirmPayment"
                     wire:loading.attr="disabled"
-                    @if($isProcessing) disabled @endif
-                    class="w-1/2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    wire:target="confirmPayment"
+                    @disabled($isProcessing)
+                    type="button"
+                    class="w-1/2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50"
                 >
                     <span wire:loading.remove wire:target="confirmPayment">
-                        Konfirmasi & Bayar
+                        @if ($paymentMethod === 'cash')
+                            Konfirmasi Pembayaran
+                        @else
+                            Bayar Sekarang
+                        @endif
                     </span>
+
                     <span wire:loading wire:target="confirmPayment">
                         Memproses...
                     </span>
@@ -97,4 +109,39 @@
 
         </div>
     </div>
+
+    <!-- MIDTRANS SNAP -->
+    <script
+        src="https://app.sandbox.midtrans.com/snap/snap.js"
+        data-client-key="{{ config('services.midtrans.client_key') }}">
+    </script>
+
+    <!-- SNAP HANDLER -->
+    <script>
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('open-midtrans', () => {
+                const snapToken = @this.snapToken;
+
+                if (!snapToken) {
+                    alert('Snap token tidak tersedia');
+                    return;
+                }
+
+                window.snap.pay(snapToken, {
+                    onSuccess: function () {
+                        window.location.href = "{{ route('filament.admin.pages.cashier-page') }}";
+                    },
+                    onPending: function () {
+                        alert('Menunggu pembayaran...');
+                    },
+                    onError: function () {
+                        alert('Pembayaran gagal');
+                    },
+                    onClose: function () {
+                        alert('Pembayaran dibatalkan');
+                    }
+                });
+            });
+        });
+    </script>
 </div>
