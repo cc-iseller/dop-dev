@@ -8,7 +8,6 @@
                 Daftar transaksi terbaru yang masuk
             </p>
         </div>
-
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-900">
@@ -27,32 +26,33 @@
                         </th>
                     </tr>
                 </thead>
-
                 <tbody class="divide-y divide-gray-700">
                     @forelse ($transactions as $trx)
                         <tr class="hover:bg-gray-700/40">
                             <td class="px-4 py-3 text-blue-400 font-medium">
                                 {{ $trx->invoice_number }}
                             </td>
-
                             <td class="px-4 py-3 text-gray-300">
                                 {{ $trx->created_at->translatedFormat('d M Y') }}
                             </td>
-
                             <td class="px-4 py-3">
-                                <span class="px-2 py-1 rounded text-xs
-                                    {{ match ($trx->payment_method) {
+                                @php
+                                    $paymentDetail = \App\Http\Controllers\MidtransWebhookController::getPaymentDetail($trx);
+
+                                    $badgeColor = match ($trx->payment_method) {
                                         'cash' => 'bg-green-600/20 text-green-400',
                                         'qris' => 'bg-blue-600/20 text-blue-400',
-                                        'bank_transfer' => 'bg-purple-600/20 text-purple-400',
-                                        'ewallet' => 'bg-yellow-600/20 text-yellow-400',
+                                        'transfer' => 'bg-purple-600/20 text-purple-400',
+                                        'debit' => 'bg-yellow-600/20 text-yellow-400',
+                                        'midtrans' => 'bg-pink-600/20 text-pink-400',
                                         default => 'bg-gray-600/20 text-gray-400',
-                                    } }}
-                                ">
-                                    {{ ucfirst(str_replace('_', ' ', $trx->payment_method)) }}
+                                    };
+                                @endphp
+                                
+                                <span class="px-2 py-1 rounded text-xs {{ $badgeColor }}">
+                                    {{ $paymentDetail }}
                                 </span>
                             </td>
-
                             <td class="px-4 py-3 text-right text-white font-semibold">
                                 Rp {{ number_format($trx->total_amount, 0, ',', '.') }}
                             </td>
