@@ -9,6 +9,9 @@ pipeline {
 
         AZ_RESOURCE_GROUP = "cc-Iseller"
         AZ_WEBAPP_NAME = "iseller-as"
+
+        POWERSHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        AZ_CLI = "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd"
     }
 
     stages {
@@ -21,77 +24,77 @@ pipeline {
 
         stage('Prepare Environment') {
             steps {
-                bat '''
-                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "docker --version"
-                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "& 'C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd' --version"
-                '''
+                bat """
+                "%POWERSHELL%" -NoProfile -Command "docker --version"
+                "%POWERSHELL%" -NoProfile -Command "& '%AZ_CLI%' --version"
+                """
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                powershell '''
-                docker build -t $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG .
-                '''
+                bat """
+                docker build -t %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% .
+                """
             }
         }
 
         stage('Test Image') {
             steps {
-                powershell '''
-                docker run -d -p 8080:80 --name test-container `
-                  $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG
+                bat """
+                docker run -d -p 8080:80 --name test-container ^
+                  %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG%
 
-                Start-Sleep -Seconds 10
+                timeout /t 10
                 docker ps
                 docker rm -f test-container
-                '''
+                """
             }
         }
 
         stage('Login to ACR') {
             steps {
-                powershell '''
-                az acr login --name $env:ACR_NAME
-                '''
+                bat """
+                "%AZ_CLI%" acr login --name %ACR_NAME%
+                """
             }
         }
 
         stage('Push Image to ACR') {
             steps {
-                powershell '''
-                docker push $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG
-                '''
+                bat """
+                docker push %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG%
+                """
             }
         }
 
         stage('Deploy to Azure Web App') {
             steps {
-                powershell '''
-                az webapp config container set `
-                  --resource-group $env:AZ_RESOURCE_GROUP `
-                  --name $env:AZ_WEBAPP_NAME `
-                  --docker-custom-image-name $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG `
-                  --docker-registry-server-url https://$env:ACR_LOGIN_SERVER
-                '''
+                bat """
+                "%AZ_CLI%" webapp config container set ^
+                  --resource-group %AZ_RESOURCE_GROUP% ^
+                  --name %AZ_WEBAPP_NAME% ^
+                  --docker-custom-image-name %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% ^
+                  --docker-registry-server-url https://%ACR_LOGIN_SERVER%
+                """
             }
         }
 
         stage('Health Check') {
             steps {
-                powershell '''
-                Start-Sleep -Seconds 20
-                Invoke-WebRequest http://$env:AZ_WEBAPP_NAME.azurewebsites.net -UseBasicParsing
-                '''
+                bat """
+                timeout /t 20
+                "%POWERSHELL%" -NoProfile -Command "Invoke-WebRequest http://%AZ_WEBAPP_NAME%.azurewebsites.net -UseBasicParsing"
+                """
             }
         }
 
         stage('Clean Up Local Docker Images') {
             steps {
-                powershell '''
-                docker rmi $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG -f
+                bat """
+                docker rmi %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% -f
                 docker system prune -f
-                '''
+                """
             }
         }
     }
