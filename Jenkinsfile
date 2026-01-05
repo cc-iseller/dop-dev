@@ -2,88 +2,132 @@ pipeline {
     agent any
 
     environment {
-        // ===== ABSOLUTE PATH (WAJIB DI WINDOWS JENKINS) =====
+        // =========================
+        // ABSOLUTE PATH (WAJIB)
+        // =========================
         DOCKER_CLI = "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe"
         AZ_CLI     = "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd"
-        POWERSHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
 
-        // ===== APP CONFIG =====
+        // =========================
+        // FORCE DISABLE WINCRED
+        // =========================
+        DOCKER_CFG = "C:\\jenkins-docker-config"
+
+        // =========================
+        // IMAGE CONFIG
+        // =========================
         ACR_NAME = "iselleracr"
         ACR_LOGIN_SERVER = "iselleracr.azurecr.io"
-        IMAGE_NAME = "dop-dev"
-        IMAGE_TAG = "${BUILD_NUMBER}"
 
+        IMAGE_NAME = "dop-dev"
+        IMAGE_TAG  = "${BUILD_NUMBER}"
+
+        // =========================
+        // AZURE WEB APP
+        // =========================
         AZ_RESOURCE_GROUP = "cc-Iseller"
-        AZ_WEBAPP_NAME = "iseller-as"
+        AZ_WEBAPP_NAME    = "iseller-as"
     }
 
     stages {
 
+        // =================================================
         stage('Checkout SCM') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Prepare Environment') {
+        // =================================================
+        stage('Prepare Docker Config (Disable Wincred)') {
             steps {
                 bat """
-                echo === CHECK DOCKER ===
-                "%DOCKER_CLI%" --version
+                echo === PREPARE DOCKER CONFIG ===
 
-                echo === CHECK AZURE CLI ===
-                "%AZ_CLI%" --version
+                if exist "%DOCKER_CFG%" rmdir /s /q "%DOCKER_CFG%"
+                mkdir "%DOCKER_CFG%"
+
+                echo {^
+                  "auths": {},^
+                  "credsStore": "",^
+                  "credHelpers": {}^
+                } > "%DOCKER_CFG%\\config.json"
+
+                type "%DOCKER_CFG%\\config.json"
                 """
             }
         }
 
+        // =================================================
+        stage('Verify Tools') {
+            steps {
+                bat """
+                echo === CHECK DOCKER ===
+                "%DOCKER_CLI%" --config %DOCKER_CFG% version
+
+                echo === CHECK AZ CLI ===
+                "%AZ_CLI%" version
+                """
+            }
+        }
+
+        // =================================================
         stage('Build Docker Image') {
             steps {
                 bat """
                 echo === BUILD DOCKER IMAGE ===
-                "%DOCKER_CLI%" build -t %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% .
+                "%DOCKER_CLI%" --config %DOCKER_CFG% build ^
+                  -t %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% .
                 """
             }
         }
 
-        stage('Test Image') {
+        // =================================================
+        stage('Test Docker Image') {
             steps {
                 bat """
-                echo === RUN CONTAINER TEST ===
-                "%DOCKER_CLI%" run -d -p 8080:80 --name test-container ^
+                echo === TEST DOCKER IMAGE ===
+
+                "%DOCKER_CLI%" --config %DOCKER_CFG% run -d ^
+                  --name test-container -p 8080:80 ^
                   %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG%
 
                 timeout /t 10
 
-                "%DOCKER_CLI%" ps
+                "%DOCKER_CLI%" --config %DOCKER_CFG% ps
 
-                "%DOCKER_CLI%" rm -f test-container
+                "%DOCKER_CLI%" --config %DOCKER_CFG% rm -f test-container
                 """
             }
         }
 
+        // =================================================
         stage('Login to ACR') {
             steps {
                 bat """
-                echo === LOGIN TO ACR ===
+                echo === LOGIN ACR ===
                 "%AZ_CLI%" acr login --name %ACR_NAME%
                 """
             }
         }
 
+        // =================================================
         stage('Push Image to ACR') {
             steps {
                 bat """
                 echo === PUSH IMAGE TO ACR ===
-                "%DOCKER_CLI%" push %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG%
+                "%DOCKER_CLI%" --config %DOCKER_CFG% push ^
+                  %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG%
                 """
             }
         }
 
+        // =================================================
         stage('Deploy to Azure Web App') {
             steps {
                 bat """
                 echo === DEPLOY TO AZURE WEB APP ===
+
                 "%AZ_CLI%" webapp config container set ^
                   --resource-group %AZ_RESOURCE_GROUP% ^
                   --name %AZ_WEBAPP_NAME% ^
@@ -93,26 +137,40 @@ pipeline {
             }
         }
 
+        // =================================================
         stage('Health Check') {
             steps {
                 bat """
                 echo === HEALTH CHECK ===
-                timeout /t 20
-
-                "%POWERSHELL%" -NoProfile -Command ^
-                  "Invoke-WebRequest http://%AZ_WEBAPP_NAME%.azurewebsites.net -UseBasicParsing"
+                timeout /t 25
+                curl http://%AZ_WEBAPP_NAME%.azurewebsites.net
                 """
             }
         }
 
-        stage('Clean Up Local Docker Images') {
+        // =================================================
+        stage('Cleanup Local Docker') {
             steps {
                 bat """
-                echo === CLEAN UP LOCAL IMAGES ===
-                "%DOCKER_CLI%" rmi %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% -f
-                "%DOCKER_CLI%" system prune -f
+                echo === CLEANUP DOCKER ===
+                "%DOCKER_CLI%" --config %DOCKER_CFG% rmi ^
+                  %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% -f
+
+                "%DOCKER_CLI%" --config %DOCKER_CFG% system prune -f
                 """
             }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ DEPLOY SUCCESS'
+        }
+        failure {
+            echo '❌ DEPLOY FAILED'
+        }
+        always {
+            echo 'Pipeline finished.'
         }
     }
 }
