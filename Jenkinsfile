@@ -21,9 +21,9 @@ pipeline {
 
         stage('Prepare Environment') {
             steps {
-                powershell '''
-                docker --version
-                az --version
+                bat '''
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "docker --version"
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "& 'C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd' --version"
                 '''
             }
         }
