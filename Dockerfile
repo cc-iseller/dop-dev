@@ -1,9 +1,10 @@
+# Gunakan tag yang spesifik untuk stabilitas
 FROM php:8.4-fpm-alpine AS base
 
 # ==============================
-# System dependencies
+# System dependencies (Alpine menggunakan apk)
 # ==============================
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     nginx \
     supervisor \
     unzip \
@@ -12,56 +13,45 @@ RUN apt-get update && apt-get install -y \
     npm \
     libpng-dev \
     libzip-dev \
-    libonig-dev \
-    && docker-php-ext-install pdo_mysql mbstring zip gd \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    oniguruma-dev \
+    freetype-dev \
+    libjpeg-turbo-dev \
+    icu-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_mysql mbstring zip gd intl
 
-# ==============================
-# Install Composer (manual, no extra image pull)
-# ==============================
-RUN curl -sS https://getcomposer.org/installer | php -- \
-    --install-dir=/usr/local/bin \
-    --filename=composer
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
 # ==============================
-# Copy project
+# Optimasi: Install PHP deps dulu (Layer Caching)
+# ==============================
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --prefer-dist --no-interaction --no-autoloader --no-scripts
+
+# ==============================
+# Optimasi: Install Node deps dulu
+# ==============================
+COPY package.json package-lock.json ./
+RUN npm install
+
+# ==============================
+# Copy seluruh project & Build
 # ==============================
 COPY . .
-
-# ==============================
-# Install PHP deps (NO git clone)
-# ==============================
-RUN composer install \
-    --no-dev \
-    --prefer-dist \
-    --no-interaction \
-    --optimize-autoloader
-
-# ==============================
-# Frontend build (Livewire / Filament)
-# ==============================
-RUN npm install
+RUN composer dump-cache --optimize
 RUN npm run build
 
 # ==============================
-# Permissions
+# Permissions & Config
 # ==============================
 RUN chown -R www-data:www-data storage bootstrap/cache
 
-# ==============================
-# Nginx config
-# ==============================
-COPY docker/default.conf /etc/nginx/conf.d/default.conf
-RUN rm -f /etc/nginx/sites-enabled/default
-
-# ==============================
-# Supervisor
-# ==============================
+COPY docker/default.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 EXPOSE 80
 
-CMD ["/usr/bin/supervisord"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
