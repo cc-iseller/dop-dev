@@ -1,57 +1,97 @@
-# Gunakan tag yang spesifik untuk stabilitas
+# ==============================
+# BASE IMAGE
+# ==============================
 FROM php:8.4-fpm-alpine AS base
 
 # ==============================
-# System dependencies (Alpine menggunakan apk)
+# ENABLE COMMUNITY & EDGE
 # ==============================
-RUN apk add --no-cache \
+RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
+ && echo "https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories
+
+# ==============================
+# SYSTEM DEPENDENCIES
+# ==============================
+RUN apk update && apk add --no-cache \
     nginx \
     supervisor \
-    unzip \
     curl \
+    unzip \
+    git \
     nodejs \
     npm \
-    libpng-dev \
-    libzip-dev \
-    oniguruma-dev \
-    freetype-dev \
-    libjpeg-turbo-dev \
-    icu-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo_mysql mbstring zip gd intl
+    icu \
+    libpng \
+    libjpeg-turbo \
+    freetype \
+    oniguruma \
+    libzip \
+    zlib
 
-# Install Composer
+# ==============================
+# BUILD DEPENDENCIES
+# ==============================
+RUN apk add --no-cache --virtual .build-deps \
+    $PHPIZE_DEPS \
+    icu-dev \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    oniguruma-dev \
+    libzip-dev \
+    zlib-dev \
+    pkgconf
+
+# ==============================
+# PHP EXTENSIONS
+# ==============================
+RUN docker-php-ext-configure gd \
+      --with-freetype \
+      --with-jpeg \
+ && docker-php-ext-install -j$(nproc) \
+      pdo_mysql \
+      mbstring \
+      zip \
+      gd \
+      intl
+
+# ==============================
+# CLEAN BUILD DEPS
+# ==============================
+RUN apk del .build-deps && rm -rf /var/cache/apk/*
+
+# ==============================
+# COMPOSER
+# ==============================
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# ==============================
+# WORKDIR
+# ==============================
 WORKDIR /var/www/html
 
 # ==============================
-# Optimasi: Install PHP deps dulu (Layer Caching)
-# ==============================
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --prefer-dist --no-interaction --no-autoloader --no-scripts
-
-# ==============================
-# Optimasi: Install Node deps dulu
-# ==============================
-COPY package.json package-lock.json ./
-RUN npm install
-
-# ==============================
-# Copy seluruh project & Build
+# COPY APP
 # ==============================
 COPY . .
-RUN composer dump-cache --optimize
-RUN npm run build
 
 # ==============================
-# Permissions & Config
+# PERMISSIONS
 # ==============================
-RUN chown -R www-data:www-data storage bootstrap/cache
+RUN chown -R www-data:www-data /var/www/html
 
-COPY docker/default.conf /etc/nginx/http.d/default.conf
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# ==============================
+# NGINX + SUPERVISOR CONFIG
+# ==============================
+COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
+COPY docker/supervisor/supervisord.conf /etc/supervisord.conf
 
+# ==============================
+# EXPOSE
+# ==============================
 EXPOSE 80
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# ==============================
+# START
+# ==============================
+CMD ["/usr/bin/supervisord","-c","/etc/supervisord.conf"]
