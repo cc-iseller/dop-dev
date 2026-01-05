@@ -1,77 +1,98 @@
 pipeline {
-	agent any
-	environment {
-		// Replace these credential IDs with the ones configured in Jenkins Credentials
-		AZURE_CLIENT_ID = credentials('azure-client-id')
-		AZURE_CLIENT_SECRET = credentials('azure-client-secret')
-		AZURE_TENANT_ID = credentials('azure-tenant-id')
-		AZURE_SUBSCRIPTION_ID = credentials('azure-subscription-id')
-		// Set these as plain strings or use credentials as appropriate
-		AZURE_RESOURCE_GROUP = 'your-resource-group'
-		AZURE_APP_NAME = 'your-app-name'
-	}
-	stages {
-		stage('Checkout') {
-			steps {
-				checkout scm
-			}
-		}
+    agent any
 
-		stage('Install PHP dependencies') {
-			steps {
-				sh 'composer install --no-progress --no-suggest --prefer-dist --optimize-autoloader'
-			}
-		}
+    environment {
+        ACR_NAME = "iselleracr"
+        ACR_LOGIN_SERVER = "iselleracr.azurecr.io"
+        IMAGE_NAME = "dop-dev"
+        IMAGE_TAG = "${BUILD_NUMBER}"
 
-		stage('Build frontend') {
-			steps {
-				sh 'npm ci'
-				sh 'npm run build'
-			}
-		}
+        AZ_RESOURCE_GROUP = "cc-Iseller"
+        AZ_WEBAPP_NAME = "iseller-as"
+    }
 
-		stage('Run tests') {
-			steps {
-				// don't fail the pipeline for test failures here by default; adjust as needed
-				sh 'vendor/bin/phpunit --configuration phpunit.xml || true'
-			}
-		}
+    stages {
 
-		stage('Package') {
-			steps {
-				sh '''
-					rm -f ../app.zip
-					zip -r ../app.zip . -x node_modules/* vendor/* storage/* .git/*
-				'''
-				archiveArtifacts artifacts: '../app.zip', fingerprint: true
-			}
-		}
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
 
-		stage('Deploy to Azure Web App') {
-			steps {
-				sh '''
-					# Install Azure CLI (Debian/Ubuntu installer). Remove if already present on agent.
-					curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        stage('Prepare Environment') {
+            steps {
+                powershell '''
+                docker --version
+                az --version
+                '''
+            }
+        }
 
-					az --version
+        stage('Build Docker Image') {
+            steps {
+                powershell '''
+                docker build -t $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG .
+                '''
+            }
+        }
 
-					# Login using service principal credentials from Jenkins credentials store
-					az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
-					az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+        stage('Test Image') {
+            steps {
+                powershell '''
+                docker run -d -p 8080:80 --name test-container `
+                  $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG
 
-					# Deploy zip to Azure Web App
-					az webapp deployment source config-zip --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_APP_NAME" --src ../app.zip
-				'''
-			}
-		}
-	}
-	post {
-		success {
-			echo 'Deployment succeeded.'
-		}
-		failure {
-			echo 'Deployment failed.'
-		}
-	}
+                Start-Sleep -Seconds 10
+                docker ps
+                docker rm -f test-container
+                '''
+            }
+        }
+
+        stage('Login to ACR') {
+            steps {
+                powershell '''
+                az acr login --name $env:ACR_NAME
+                '''
+            }
+        }
+
+        stage('Push Image to ACR') {
+            steps {
+                powershell '''
+                docker push $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG
+                '''
+            }
+        }
+
+        stage('Deploy to Azure Web App') {
+            steps {
+                powershell '''
+                az webapp config container set `
+                  --resource-group $env:AZ_RESOURCE_GROUP `
+                  --name $env:AZ_WEBAPP_NAME `
+                  --docker-custom-image-name $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG `
+                  --docker-registry-server-url https://$env:ACR_LOGIN_SERVER
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                powershell '''
+                Start-Sleep -Seconds 20
+                Invoke-WebRequest http://$env:AZ_WEBAPP_NAME.azurewebsites.net -UseBasicParsing
+                '''
+            }
+        }
+
+        stage('Clean Up Local Docker Images') {
+            steps {
+                powershell '''
+                docker rmi $env:ACR_LOGIN_SERVER/$env:IMAGE_NAME:$env:IMAGE_TAG -f
+                docker system prune -f
+                '''
+            }
+        }
+    }
 }
-
