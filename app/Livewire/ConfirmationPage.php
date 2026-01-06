@@ -17,26 +17,42 @@ class ConfirmationPage extends Component
     public ?string $customerName = null;
     public string $paymentMethod = 'cash';
     public bool $isProcessing = false;
+
+    // Tidak wajib kalau view kamu pakai event token, tapi boleh disimpan.
     public ?string $snapToken = null;
 
-    /* =====================
-       MOUNT
-    ===================== */
     public function mount(): void
     {
         $this->cart = session('cart', []);
 
         if (empty($this->cart)) {
             redirect()->route('filament.admin.pages.cashier-page');
+            return;
         }
     }
 
-    /* =====================
-       MAIN ACTION
-    ===================== */
     public function confirmPayment(MidtransService $midtrans): void
     {
         if ($this->isProcessing) return;
+
+        if (! auth()->check()) {
+            Notification::make()
+                ->title('Harus login dulu')
+                ->danger()
+                ->send();
+            return;
+        }
+
+        $storeId = auth()->user()->currentStoreId();
+
+        if (! $storeId) {
+            Notification::make()
+                ->title('Store belum dipilih')
+                ->body('Silakan pilih / set current store terlebih dahulu.')
+                ->danger()
+                ->send();
+            return;
+        }
 
         if (empty($this->cart)) {
             Notification::make()
@@ -46,41 +62,51 @@ class ConfirmationPage extends Component
             return;
         }
 
-        $stock = $this->validateStock();
+        // Validasi: pastikan cart item hanya milik store ini & stok cukup
+        $stock = $this->validateStock($storeId);
         if (! $stock['valid']) {
             Notification::make()
-                ->title('Stok Tidak Cukup')
+                ->title('Stok Tidak Cukup / Data Tidak Valid')
                 ->body($stock['message'])
                 ->danger()
                 ->send();
             return;
         }
 
+        // Gate subscription untuk midtrans
+        if ($this->paymentMethod === 'midtrans') {
+            $canMidtrans = auth()->user()->hasFeature('midtrans_payment');
+            if (! $canMidtrans) {
+                Notification::make()
+                    ->title('Fitur Pro')
+                    ->body('Pembayaran Midtrans hanya tersedia untuk paket Pro.')
+                    ->danger()
+                    ->send();
+                return;
+            }
+        }
+
         $this->isProcessing = true;
 
         try {
             if ($this->paymentMethod === 'cash') {
-                $this->processCashPayment();
+                $this->processCashPayment($storeId);
             } else {
-                $this->processMidtransPayment($midtrans);
+                $this->processMidtransPayment($storeId, $midtrans);
             }
         } finally {
             $this->isProcessing = false;
         }
     }
 
-    /* =====================
-       CASH PAYMENT
-    ===================== */
-    private function processCashPayment(): void
+    private function processCashPayment(int $storeId): void
     {
-        DB::transaction(function () {
-
-            $transaction = $this->createTransaction('cash', 'paid');
+        DB::transaction(function () use ($storeId) {
+            $transaction = $this->createTransaction($storeId, 'cash', 'paid');
 
             foreach ($this->cart as $item) {
-                $this->createTransactionItem($transaction, $item);
-                $this->updateStock($item);
+                $this->createTransactionItem($storeId, $transaction, $item);
+                $this->updateStock($storeId, $item);
             }
         });
 
@@ -94,35 +120,28 @@ class ConfirmationPage extends Component
         redirect()->route('filament.admin.pages.cashier-page');
     }
 
-    /* =====================
-       MIDTRANS PAYMENT
-    ===================== */
-    private function processMidtransPayment(MidtransService $midtrans): void
+    private function processMidtransPayment(int $storeId, MidtransService $midtrans): void
     {
-        DB::beginTransaction();
-
         try {
-            $transaction = $this->createTransaction('midtrans', 'pending');
+            $snapToken = DB::transaction(function () use ($storeId, $midtrans) {
+                // 1) Buat transaksi pending
+                $transaction = $this->createTransaction($storeId, 'midtrans', 'pending');
 
-            foreach ($this->cart as $item) {
-                // ❗ JANGAN update stok di sini
-                $this->createTransactionItem($transaction, $item);
-            }
+                // 2) Buat items (jangan update stok di sini)
+                foreach ($this->cart as $item) {
+                    $this->createTransactionItem($storeId, $transaction, $item);
+                }
 
-            $snapToken = $midtrans->createSnapToken($transaction);
-
-            $transaction->update([
-                'snap_token' => $snapToken,
-            ]);
-
-            DB::commit();
+                // 3) Minta snap token dari Midtrans
+                return $midtrans->createSnapToken($transaction);
+            });
 
             $this->snapToken = $snapToken;
-            $this->dispatch('open-midtrans');
+
+            // ✅ sesuai view fix: event kirim token langsung
+            $this->dispatch('open-midtrans', token: $snapToken);
 
         } catch (\Throwable $e) {
-            DB::rollBack();
-
             Notification::make()
                 ->title('Gagal Memproses Midtrans')
                 ->body($e->getMessage())
@@ -131,46 +150,70 @@ class ConfirmationPage extends Component
         }
     }
 
-    /* =====================
-       HELPERS
-    ===================== */
-
-    private function createTransaction(string $method, string $status): Transaction
+    private function createTransaction(int $storeId, string $method, string $status): Transaction
     {
         return Transaction::create([
+            'store_id' => $storeId,
+            'created_by' => auth()->id(), // boleh null kalau belum login, tapi kita sudah cek auth
             'invoice_number' => $this->generateInvoiceNumber(),
             'customer_name' => $this->customerName,
             'payment_method' => $method,
             'status' => $status,
             'total_items' => array_sum(array_column($this->cart, 'qty')),
-            'total_amount' => collect($this->cart)
-                ->sum(fn ($i) => $i['price'] * $i['qty']),
+            'total_amount' => collect($this->cart)->sum(fn ($i) => $i['price'] * $i['qty']),
+            // 'paid_at' => now(), // jangan di sini; cash bisa diisi, midtrans di webhook
         ]);
     }
 
-    private function createTransactionItem(Transaction $transaction, array $item): void
+    private function createTransactionItem(int $storeId, Transaction $transaction, array $item): void
     {
         $variantId = $item['variant_id'] ?? null;
 
+        // Validasi tambahan: pastikan product/variant milik store ini
         if ($variantId) {
-            $variant = ProductVariant::with('product')->find($variantId);
-            $sku = $variant?->sku;
-            $variantSnapshot = [
-                'size' => $variant?->size,
-                'color' => $variant?->color,
-            ];
+            $variant = ProductVariant::with('product')
+                ->where('store_id', $storeId)
+                ->where('id', $variantId)
+                ->first();
+
+            if (! $variant) {
+                throw new \RuntimeException("Variant tidak valid untuk store saat ini: {$variantId}");
+            }
+
+            $sku = $variant->sku;
+
+            // Kamu sebelumnya pakai size/color, tapi di schema kamu ada pivot options.
+            // Jadi snapshot variant kita simpan dari options biar sesuai struktur variant kamu.
+            $variantSnapshot = $variant->options()
+                ->with('type') // kalau ada relation type di VariantOption
+                ->get()
+                ->map(fn ($opt) => [
+                    'type' => $opt->type->name ?? null,
+                    'value' => $opt->value,
+                ])
+                ->values()
+                ->all();
+
         } else {
-            $product = Product::find($item['product_id']);
-            $sku = $product?->base_sku;
+            $product = Product::where('store_id', $storeId)
+                ->where('id', $item['product_id'])
+                ->first();
+
+            if (! $product) {
+                throw new \RuntimeException("Produk tidak valid untuk store saat ini: {$item['product_id']}");
+            }
+
+            $sku = $product->base_sku;
             $variantSnapshot = null;
         }
 
         TransactionItem::create([
+            'store_id' => $storeId,                 // ✅ penting buat query reporting cepat
             'transaction_id' => $transaction->id,
             'product_id' => $item['product_id'],
             'product_variant_id' => $variantId,
             'product_name_snapshot' => $item['name'],
-            'sku_snapshot' => $sku,
+            'sku_snapshot' => $sku ?? '-',          // jaga-jaga null
             'variant_snapshot' => $variantSnapshot,
             'price' => $item['price'],
             'qty' => $item['qty'],
@@ -178,36 +221,66 @@ class ConfirmationPage extends Component
         ]);
     }
 
-    private function updateStock(array $item): void
+    private function updateStock(int $storeId, array $item): void
     {
-        if (!empty($item['variant_id'])) {
-            ProductVariant::where('id', $item['variant_id'])
-                ->decrement('stock', $item['qty']);
+        $qty = (int) $item['qty'];
+
+        if (! empty($item['variant_id'])) {
+            ProductVariant::where('store_id', $storeId)
+                ->where('id', $item['variant_id'])
+                ->decrement('stock', $qty);
         } else {
-            Product::where('id', $item['product_id'])
-                ->decrement('base_stock', $item['qty']);
+            Product::where('store_id', $storeId)
+                ->where('id', $item['product_id'])
+                ->decrement('base_stock', $qty);
         }
     }
 
-    private function validateStock(): array
+    private function validateStock(int $storeId): array
     {
         foreach ($this->cart as $item) {
-            $qty = $item['qty'];
+            $qty = (int) ($item['qty'] ?? 0);
 
-            if (!empty($item['variant_id'])) {
-                $variant = ProductVariant::find($item['variant_id']);
-                if (!$variant || $variant->stock < $qty) {
+            if ($qty <= 0) {
+                return ['valid' => false, 'message' => "Qty tidak valid untuk {$item['name']}"];
+            }
+
+            if (! empty($item['variant_id'])) {
+                $variant = ProductVariant::where('store_id', $storeId)
+                    ->where('id', $item['variant_id'])
+                    ->first();
+
+                if (! $variant) {
+                    return ['valid' => false, 'message' => "Variant {$item['name']} tidak ditemukan di store ini"];
+                }
+
+                if (! $variant->is_active) {
+                    return ['valid' => false, 'message' => "Variant {$item['name']} sedang nonaktif"];
+                }
+
+                if ($variant->stock < $qty) {
                     return ['valid' => false, 'message' => "Stok {$item['name']} tidak mencukupi"];
                 }
             } else {
-                $product = Product::find($item['product_id']);
-                if (!$product || $product->base_stock < $qty) {
+                $product = Product::where('store_id', $storeId)
+                    ->where('id', $item['product_id'])
+                    ->first();
+
+                if (! $product) {
+                    return ['valid' => false, 'message' => "Produk {$item['name']} tidak ditemukan di store ini"];
+                }
+
+                if (! $product->is_active) {
+                    return ['valid' => false, 'message' => "Produk {$item['name']} sedang nonaktif"];
+                }
+
+                if ((int) $product->base_stock < $qty) {
                     return ['valid' => false, 'message' => "Stok {$item['name']} tidak mencukupi"];
                 }
             }
         }
 
-        return ['valid' => true];
+        return ['valid' => true, 'message' => null];
     }
 
     private function generateInvoiceNumber(): string

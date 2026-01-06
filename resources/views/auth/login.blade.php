@@ -119,12 +119,11 @@
             <div class="h-px flex-1 bg-white/10"></div>
           </div>
 
-          <!-- Google Login (UI only) -->
-          <button
-            type="button"
-            onclick="showGoogleDemo()"
+          <!-- ✅ Google Login (REAL) -->
+          <a
+            href="{{ route('auth.google.redirect') }}"
             class="inline-flex w-full items-center justify-center gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10"
-          >
+            >
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
               <path
                 fill="#FFC107"
@@ -144,7 +143,7 @@
               />
             </svg>
             Login dengan Google
-          </button>
+          </a>
 
           <p class="pt-2 text-center text-xs text-slate-400">
             Belum punya akun?
@@ -158,10 +157,6 @@
 
     <script>
       document.getElementById("year").textContent = new Date().getFullYear();
-
-      function showGoogleDemo() {
-        alert("Login dengan Google (Demo) — nanti sambungkan ke Google OAuth.");
-      }
     </script>
   </body>
 </html>

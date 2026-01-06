@@ -3,13 +3,24 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\Product;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Concerns\BelongsToStore;
 
 class Category extends Model
 {
-    protected $fillable = ['name'];
+    use BelongsToStore;
+    protected $fillable = [
+        'store_id',
+        'name',
+    ];
 
-    public function products()
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function products(): HasMany
     {
         return $this->hasMany(Product::class);
     }

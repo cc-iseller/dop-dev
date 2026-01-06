@@ -3,17 +3,26 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\TransactionItem;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Concerns\BelongsToStore;
 
 class Transaction extends Model
 {
+    use BelongsToStore;
     protected $fillable = [
+        'store_id',
+        'created_by',
+
         'invoice_number',
         'customer_name',
         'payment_method',
         'status',
+        'paid_at',
+
         'total_items',
         'total_amount',
+
         'midtrans_transaction_id',
         'midtrans_payment_type',
         'midtrans_transaction_status',
@@ -23,32 +32,36 @@ class Transaction extends Model
 
     protected $casts = [
         'midtrans_response' => 'array',
+        'paid_at' => 'datetime',
+        'total_amount' => 'decimal:2',
+        'total_items' => 'integer',
     ];
 
-    public function items()
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function items(): HasMany
     {
         return $this->hasMany(TransactionItem::class);
     }
 
-    /**
-     * Helper untuk cek apakah transaksi sudah dibayar.
-     */
     public function isPaid(): bool
     {
         return $this->status === 'paid';
     }
 
-    /**
-     * Helper untuk cek apakah transaksi masih pending.
-     */
     public function isPending(): bool
     {
         return $this->status === 'pending';
     }
 
-    /**
-     * Helper untuk cek apakah transaksi dibatalkan.
-     */
     public function isCancelled(): bool
     {
         return $this->status === 'cancelled';
