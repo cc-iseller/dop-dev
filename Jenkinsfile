@@ -138,13 +138,10 @@ pipeline {
         // =================================================
         stage('Health Check') {
             steps {
-        bat '''
-        echo === HEALTH CHECK ===
-        ping 127.0.0.1 -n 25 > nul
-        powershell -Command "Invoke-WebRequest http://iseller-as.azurewebsites.net -UseBasicParsing"
-        '''
+        echo 'Health check skipped (handled by Azure App Service)'
             }
         }
+
 
 
         // =================================================
