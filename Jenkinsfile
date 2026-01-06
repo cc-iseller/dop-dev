@@ -106,18 +106,20 @@ pipeline {
         stage('Login to ACR') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'acr-admin',
-                    usernameVariable: 'ACR_USER',
-                    passwordVariable: 'ACR_PASS'
-                )]) {
-                    bat """
-                    "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" login iselleracr.azurecr.io ^
-                    -u %ACR_USER% ^
-                    -p %ACR_PASS%
-                    """
-                }
+            credentialsId: 'acr-admin',
+            usernameVariable: 'ACR_USER',
+            passwordVariable: 'ACR_PASS'
+            )]) {
+            bat '''
+            echo %ACR_PASS% | "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" ^
+              --config C:\\jenkins-docker-config ^
+              login iselleracr.azurecr.io ^
+              -u %ACR_USER% ^
+              --password-stdin
+            '''
             }
         }
+    }
 
 
         // =================================================
