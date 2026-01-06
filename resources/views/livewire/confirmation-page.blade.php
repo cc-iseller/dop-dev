@@ -1,4 +1,7 @@
 <div>
+    @php $canMidtrans = auth()->check() &&
+    auth()->user()->hasFeature('midtrans_payment'); @endphp
+
     <div class="max-w-3xl mx-auto">
         <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 space-y-6">
 
@@ -14,33 +17,40 @@
 
             <!-- CART LIST -->
             <div class="space-y-3">
-                @foreach ($cart as $item)
-                    <div class="flex justify-between items-center bg-gray-900 rounded-lg p-4">
-                        <div>
-                            <p class="text-white text-sm font-medium">
-                                {{ $item['name'] }}
-                            </p>
-                            <p class="text-gray-400 text-xs">
-                                {{ $item['qty'] }} × Rp {{ number_format($item['price'], 0, ',', '.') }}
-                            </p>
-                        </div>
-
-                        <div class="text-white text-sm font-semibold">
-                            Rp {{ number_format($item['price'] * $item['qty'], 0, ',', '.') }}
-                        </div>
+                @forelse ($cart as $item)
+                <div class="flex justify-between items-center bg-gray-900 rounded-lg p-4">
+                    <div>
+                        <p class="text-white text-sm font-medium">
+                            {{ $item['name'] }}
+                        </p>
+                        <p class="text-gray-400 text-xs">
+                            {{ $item['qty'] }}
+                            × Rp
+                            {{ number_format($item['price'], 0, ',', '.') }}
+                        </p>
                     </div>
-                @endforeach
+
+                    <div class="text-white text-sm font-semibold">
+                        Rp
+                        {{ number_format($item['price'] * $item['qty'], 0, ',', '.') }}
+                    </div>
+                </div>
+                @empty
+                <div class="bg-gray-900 rounded-lg p-4 text-sm text-gray-300">
+                    Keranjang kosong.
+                </div>
+                @endforelse
             </div>
 
             <!-- SUMMARY -->
-            @php
-                $total = collect($cart)->sum(fn ($item) => $item['price'] * $item['qty']);
+            @php $total = collect($cart)->sum(fn ($item) => $item['price'] * $item['qty']);
             @endphp
 
             <div class="border-t border-gray-700 pt-4 space-y-2 text-sm">
                 <div class="flex justify-between text-gray-300">
                     <span>Total</span>
-                    <span>Rp {{ number_format($total, 0, ',', '.') }}</span>
+                    <span>Rp
+                        {{ number_format($total, 0, ',', '.') }}</span>
                 </div>
             </div>
 
@@ -51,97 +61,110 @@
                 </h3>
 
                 <!-- CASH -->
-                <label class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer">
+                <label
+                    class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer">
                     <input
                         type="radio"
                         wire:model="paymentMethod"
                         value="cash"
-                        class="text-blue-600"
-                    >
-                    <span class="text-white text-sm">Tunai (Cash)</span>
-                </label>
+                        class="text-blue-600">
+                        <span class="text-white text-sm">Tunai (Cash)</span>
+                    </label>
 
-                <!-- MIDTRANS -->
-                <label class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg cursor-pointer">
-                    <input
-                        type="radio"
-                        wire:model="paymentMethod"
-                        value="midtrans"
-                        class="text-blue-600"
-                    >
-                    <span class="text-white text-sm">
-                        Non Tunai (QRIS / VA / E-Wallet)
-                    </span>
-                </label>
-            </div>
+                    <!-- MIDTRANS -->
+                    <label
+                        class="flex items-center gap-3 bg-gray-900 p-3 rounded-lg
+                        {{ $canMidtrans ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed' }}">
+                        <input
+                            type="radio"
+                            wire:model="paymentMethod"
+                            value="midtrans"
+                            class="text-blue-600"
+                            {{ $canMidtrans ? '' : 'disabled' }}>
+                            <span class="text-white text-sm">
+                                Non Tunai (QRIS / VA / E-Wallet) @if (! $canMidtrans)
+                                <span class="ml-2 text-xs text-yellow-300">(Pro)</span>
+                                @endif
+                            </span>
+                        </label>
 
-            <!-- ACTION -->
-            <div class="flex gap-3">
-                <button
-                    wire:click="goBack"
-                    type="button"
-                    class="w-1/2 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm"
-                >
-                    Kembali
-                </button>
-
-                <button
-                    wire:click="confirmPayment"
-                    wire:loading.attr="disabled"
-                    wire:target="confirmPayment"
-                    @disabled($isProcessing)
-                    type="button"
-                    class="w-1/2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                >
-                    <span wire:loading.remove wire:target="confirmPayment">
-                        @if ($paymentMethod === 'cash')
-                            Konfirmasi Pembayaran
-                        @else
-                            Bayar Sekarang
+                        @if (! $canMidtrans)
+                        <div
+                            class="mt-2 rounded-lg border border-yellow-400/20 bg-yellow-400/10 p-3 text-xs text-yellow-200">
+                            Pembayaran non-tunai via Midtrans hanya tersedia untuk paket
+                            <b>Pro</b>. Silakan
+                            <a
+                                href="{{ route('filament.admin.pages.billing-page') }}"
+                                class="underline font-semibold hover:text-yellow-100">
+                                upgrade subscription
+                            </a>
+                            toko untuk mengaktifkannya.
+                        </div>
                         @endif
-                    </span>
+                    </div>
 
-                    <span wire:loading wire:target="confirmPayment">
-                        Memproses...
-                    </span>
-                </button>
+                    <!-- ACTION -->
+                    <div class="flex gap-3">
+                        <button
+                            wire:click="goBack"
+                            type="button"
+                            class="w-1/2 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">
+                            Kembali
+                        </button>
+
+                        <button
+                            wire:click="confirmPayment"
+                            wire:loading.attr="disabled"
+                            wire:target="confirmPayment"
+                            @disabled($isProcessing)="@disabled($isProcessing)"
+                            type="button"
+                            class="w-1/2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50">
+                            <span wire:loading.remove="wire:loading.remove" wire:target="confirmPayment">
+                                @if ($paymentMethod === 'cash') Konfirmasi Pembayaran @else Bayar Sekarang
+                                @endif
+                            </span>
+
+                            <span wire:loading="wire:loading" wire:target="confirmPayment">
+                                Memproses...
+                            </span>
+                        </button>
+                    </div>
+
+                </div>
             </div>
 
-        </div>
-    </div>
+            {{-- MIDTRANS SNAP: hanya load saat user pilih midtrans --}}
+            @if ($paymentMethod === 'midtrans')
+            <script
+                src="https://app.sandbox.midtrans.com/snap/snap.js"
+                data-client-key="{{ config('services.midtrans.client_key') }}"></script>
 
-    <!-- MIDTRANS SNAP -->
-    <script
-        src="https://app.sandbox.midtrans.com/snap/snap.js"
-        data-client-key="{{ config('services.midtrans.client_key') }}">
-    </script>
+            <script>
+                document.addEventListener('livewire:init', () => {
+                    Livewire.on('open-midtrans', ({token}) => {
+                        if (!token) {
+                            alert('Snap token tidak tersedia');
+                            return;
+                        }
 
-    <!-- SNAP HANDLER -->
-    <script>
-        document.addEventListener('livewire:init', () => {
-            Livewire.on('open-midtrans', () => {
-                const snapToken = @this.snapToken;
-
-                if (!snapToken) {
-                    alert('Snap token tidak tersedia');
-                    return;
-                }
-
-                window.snap.pay(snapToken, {
-                    onSuccess: function () {
-                        window.location.href = "{{ route('filament.admin.pages.cashier-page') }}";
-                    },
-                    onPending: function () {
-                        alert('Menunggu pembayaran...');
-                    },
-                    onError: function () {
-                        alert('Pembayaran gagal');
-                    },
-                    onClose: function () {
-                        alert('Pembayaran dibatalkan');
-                    }
+                        window
+                            .snap
+                            .pay(token, {
+                                onSuccess: function () {
+                                    window.location.href = "{{ route('filament.admin.pages.cashier-page') }}";
+                                },
+                                onPending: function () {
+                                    alert('Menunggu pembayaran...');
+                                },
+                                onError: function () {
+                                    alert('Pembayaran gagal');
+                                },
+                                onClose: function () {
+                                    alert('Pembayaran dibatalkan');
+                                }
+                            });
+                    });
                 });
-            });
-        });
-    </script>
-</div>
+            </script>
+            @endif
+        </div>

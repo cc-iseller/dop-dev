@@ -44,9 +44,9 @@
                         Login
                     </a>
                     <a
-                        href="#cta"
+                        href="/register"
                         class="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400">
-                        Coba Gratis
+                        Register
                     </a>
                 </div>
             </nav>
