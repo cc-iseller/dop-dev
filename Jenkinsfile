@@ -133,16 +133,31 @@ pipeline {
             }
         }
 
-        // ================================================
+        // =================================================
+        stage('Deploy to Azure Web App') {
+            steps {
+                bat """
+                echo === DEPLOY TO AZURE WEB APP ===
+
+                "%AZ_CLI%" webapp config container set ^
+                  --resource-group %AZ_RESOURCE_GROUP% ^
+                  --name %AZ_WEBAPP_NAME% ^
+                  --docker-custom-image-name %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% ^
+                  --docker-registry-server-url https://%ACR_LOGIN_SERVER%
+                """
+            }
+        }
 
         // =================================================
         stage('Health Check') {
             steps {
-        echo 'Health check skipped (handled by Azure App Service)'
+                bat """
+                echo === HEALTH CHECK ===
+                timeout /t 25
+                curl http://%AZ_WEBAPP_NAME%.azurewebsites.net
+                """
             }
         }
-
-
 
         // =================================================
         stage('Cleanup Local Docker') {
