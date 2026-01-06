@@ -102,14 +102,21 @@ pipeline {
         }
 
         // =================================================
+       
         stage('Login to ACR') {
             steps {
-                bat """
-                echo === LOGIN ACR ===
-                "%AZ_CLI%" acr login --name %ACR_NAME%
-                """
+        bat '''
+        echo === LOGIN ACR (TOKEN MODE) ===
+
+        for /f "delims=" %%i in ('"C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd" acr login -n iselleracr --expose-token --query accessToken -o tsv') do set ACR_TOKEN=%%i
+
+        "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" login iselleracr.azurecr.io ^
+          -u 00000000-0000-0000-0000-000000000000 ^
+          -p %ACR_TOKEN%
+        '''
             }
         }
+
 
         // =================================================
         stage('Push Image to ACR') {
