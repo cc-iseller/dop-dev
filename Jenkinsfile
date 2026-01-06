@@ -134,17 +134,21 @@ pipeline {
         }
 
         // =================================================
-        stage('Deploy to Azure Web App') {
+        stage('Azure Login') {
             steps {
-                bat """
-                echo === DEPLOY TO AZURE WEB APP ===
-
-                "%AZ_CLI%" webapp config container set ^
-                  --resource-group %AZ_RESOURCE_GROUP% ^
-                  --name %AZ_WEBAPP_NAME% ^
-                  --docker-custom-image-name %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% ^
-                  --docker-registry-server-url https://%ACR_LOGIN_SERVER%
-                """
+        withCredentials([usernamePassword(
+            credentialsId: 'azure-sp',
+            usernameVariable: 'AZURE_CLIENT_ID',
+            passwordVariable: 'AZURE_CLIENT_SECRET'
+            )]) {
+            bat '''
+            "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd" login ^
+              --service-principal ^
+              -u %AZURE_CLIENT_ID% ^
+              -p %AZURE_CLIENT_SECRET% ^
+              --tenant <TENANT_ID>
+            '''
+                }
             }
         }
 
