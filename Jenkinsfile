@@ -138,13 +138,14 @@ pipeline {
         // =================================================
         stage('Health Check') {
             steps {
-                bat """
-                echo === HEALTH CHECK ===
-                timeout /t 25
-                curl http://%AZ_WEBAPP_NAME%.azurewebsites.net
-                """
+        bat '''
+        echo === HEALTH CHECK ===
+        ping 127.0.0.1 -n 25 > nul
+        powershell -Command "Invoke-WebRequest http://iseller-as.azurewebsites.net -UseBasicParsing"
+        '''
             }
         }
+
 
         // =================================================
         stage('Cleanup Local Docker') {
