@@ -1,10 +1,16 @@
 # ==============================
-# BASE IMAGE
+# BASE IMAGE (PINNED & STABLE)
 # ==============================
-FROM php:8.4-fpm-alpine
+FROM php:8.4-fpm-alpine3.20
 
 # ==============================
-# SYSTEM PACKAGES (STABLE)
+# FIX DNS (CRITICAL FOR WINDOWS CI)
+# ==============================
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf \
+ && echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+
+# ==============================
+# SYSTEM & BUILD DEPS
 # ==============================
 RUN apk add --no-cache \
     nginx \
@@ -14,7 +20,7 @@ RUN apk add --no-cache \
     git \
     nodejs \
     npm \
-    icu \
+    icu-libs \
     libpng \
     libjpeg-turbo \
     freetype \
@@ -26,18 +32,19 @@ RUN apk add --no-cache \
     libjpeg-turbo-dev \
     freetype-dev \
     oniguruma-dev \
-    libzip-dev
+    libzip-dev \
+    build-base
 
 # ==============================
 # PHP EXTENSIONS
 # ==============================
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install \
-        pdo_mysql \
-        mbstring \
-        zip \
-        gd \
-        intl
+ && docker-php-ext-install \
+    pdo_mysql \
+    mbstring \
+    zip \
+    gd \
+    intl
 
 # ==============================
 # COMPOSER
@@ -57,13 +64,13 @@ COPY . .
 RUN chown -R www-data:www-data /var/www/html
 
 # ==============================
-# NGINX & SUPERVISOR CONFIG
+# NGINX & SUPERVISOR
 # ==============================
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisor/supervisord.conf /etc/supervisord.conf
 
 # ==============================
-# EXPOSE
+# PORT
 # ==============================
 EXPOSE 80
 
