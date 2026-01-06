@@ -133,24 +133,7 @@ pipeline {
             }
         }
 
-        // =================================================
-        stage('Azure Login') {
-            steps {
-        withCredentials([usernamePassword(
-            credentialsId: 'azure-sp',
-            usernameVariable: 'AZURE_CLIENT_ID',
-            passwordVariable: 'AZURE_CLIENT_SECRET'
-            )]) {
-            bat '''
-            "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd" login ^
-              --service-principal ^
-              -u %AZURE_CLIENT_ID% ^
-              -p %AZURE_CLIENT_SECRET% ^
-              --tenant <TENANT_ID>
-            '''
-                }
-            }
-        }
+        // ================================================
 
         // =================================================
         stage('Health Check') {
