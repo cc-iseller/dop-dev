@@ -36,15 +36,15 @@
 
                 <!-- ALERT: error dari Laravel (validasi) -->
                 @if ($errors->any())
-                    <div
-                        class="mt-4 rounded-xl bg-red-500/10 p-4 text-sm text-red-100 ring-1 ring-red-400/20">
-                        <div class="mb-2 font-semibold">Registrasi gagal:</div>
-                        <ul class="list-disc space-y-1 pl-5">
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
+                <div
+                    class="mt-4 rounded-xl bg-red-500/10 p-4 text-sm text-red-100 ring-1 ring-red-400/20">
+                    <div class="mb-2 font-semibold">Registrasi gagal:</div>
+                    <ul class="list-disc space-y-1 pl-5">
+                        @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
                 @endif
 
                 <!-- Form Register (Laravel backend) -->
@@ -61,7 +61,7 @@
                             id="name"
                             name="name"
                             type="text"
-                            required
+                            required="required"
                             value="{{ old('name') }}"
                             placeholder="Nama pemilik / kasir"
                             class="w-full rounded-xl bg-slate-950/60 px-4 py-3 text-sm text-white placeholder:text-slate-400 ring-1 ring-white/10 outline-none focus:ring-2 focus:ring-indigo-400/60"/>
@@ -73,7 +73,7 @@
                             id="email"
                             name="email"
                             type="email"
-                            required
+                            required="required"
                             autocomplete="email"
                             value="{{ old('email') }}"
                             placeholder="contoh@tokokamu.com"
@@ -88,7 +88,7 @@
                             name="password"
                             type="password"
                             minlength="6"
-                            required
+                            required="required"
                             autocomplete="new-password"
                             placeholder="Minimal 6 karakter"
                             class="w-full rounded-xl bg-slate-950/60 px-4 py-3 text-sm text-white placeholder:text-slate-400 ring-1 ring-white/10 outline-none focus:ring-2 focus:ring-indigo-400/60"/>
@@ -102,7 +102,7 @@
                             name="password_confirmation"
                             type="password"
                             minlength="6"
-                            required
+                            required="required"
                             autocomplete="new-password"
                             placeholder="Ulangi password"
                             class="w-full rounded-xl bg-slate-950/60 px-4 py-3 text-sm text-white placeholder:text-slate-400 ring-1 ring-white/10 outline-none focus:ring-2 focus:ring-indigo-400/60"/>
@@ -114,7 +114,7 @@
                             id="agree"
                             name="agree"
                             type="checkbox"
-                            required
+                            required="required"
                             class="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950/60"/>
                         <span>
                             Saya setuju dengan
@@ -137,11 +137,10 @@
                     </div>
 
                     <!-- Google Register (UI only) -->
-                    <button
-                        type="button"
-                        onclick="showGoogleDemo()"
+                    <a
+                        href="{{ route('auth.google.redirect') }}"
                         class="inline-flex w-full items-center justify-center gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10">
-                        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                        <svg width="18" height="18" viewbox="0 0 48 48" aria-hidden="true">
                             <path
                                 fill="#FFC107"
                                 d="M43.611 20.083H42V20H24v8h11.303C33.468 32.91 29.197 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
@@ -156,11 +155,13 @@
                                 d="M43.611 20.083H42V20H24v8h11.303a12.05 12.05 0 0 1-4.084 5.565l.003-.002 6.19 5.238C36.971 40.205 44 36 44 24c0-1.341-.138-2.65-.389-3.917z"/>
                         </svg>
                         Daftar dengan Google
-                    </button>
+                    </a>
 
                     <p class="pt-2 text-center text-xs text-slate-400">
                         Sudah punya akun?
-                        <a href="/admin/login" class="font-semibold text-indigo-300 hover:text-indigo-200">Login</a>
+                        <a
+                            href="/admin/login"
+                            class="font-semibold text-indigo-300 hover:text-indigo-200">Login</a>
                     </p>
                 </form>
 
@@ -172,7 +173,9 @@
 
         <script>
             // Year
-            document.getElementById("year").textContent = new Date().getFullYear();
+            document
+                .getElementById("year")
+                .textContent = new Date().getFullYear();
 
             // Google demo
             function showGoogleDemo() {
@@ -180,20 +183,34 @@
             }
 
             // Optional UX: validasi password sama sebelum submit
-            document.getElementById("registerForm").addEventListener("submit", function (e) {
-                const p1 = document.getElementById("password").value.trim();
-                const p2 = document.getElementById("password2").value.trim();
-                const hint = document.getElementById("matchHint");
+            document
+                .getElementById("registerForm")
+                .addEventListener("submit", function (e) {
+                    const p1 = document
+                        .getElementById("password")
+                        .value
+                        .trim();
+                    const p2 = document
+                        .getElementById("password2")
+                        .value
+                        .trim();
+                    const hint = document.getElementById("matchHint");
 
-                if (p1 !== p2) {
-                    e.preventDefault();
-                    hint.classList.remove("hidden");
-                    document.getElementById("password2").focus();
-                    return;
-                }
+                    if (p1 !== p2) {
+                        e.preventDefault();
+                        hint
+                            .classList
+                            .remove("hidden");
+                        document
+                            .getElementById("password2")
+                            .focus();
+                        return;
+                    }
 
-                hint.classList.add("hidden");
-            });
+                    hint
+                        .classList
+                        .add("hidden");
+                });
         </script>
     </body>
 </html>

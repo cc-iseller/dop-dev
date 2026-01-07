@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\SubscriptionPayment;
 use Illuminate\Support\Carbon;
 
 class Subscription extends Model
@@ -41,5 +43,10 @@ class Subscription extends Model
         if (! $this->isActive()) return false;
 
         return (bool) optional($this->plan)->hasFeature($feature);
+    }
+
+    public function latestPayment(): HasOne
+    {
+        return $this->hasOne(SubscriptionPayment::class)->latestOfMany();
     }
 }

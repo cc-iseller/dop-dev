@@ -3,9 +3,11 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\MidtransWebhookController;
+use App\Http\Controllers\MidtransSubscriptionWebhookController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
 Route::post('/midtrans/webhook', [MidtransWebhookController::class, 'handle']);
+Route::post('/midtrans/subscription/webhook', [MidtransSubscriptionWebhookController::class, 'handle']);
