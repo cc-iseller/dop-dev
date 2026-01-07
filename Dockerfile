@@ -62,6 +62,9 @@ RUN chown -R www-data:www-data /var/www/html
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisor/supervisord.conf /etc/supervisord.conf
 
+# Install composer dependencies di dalam container
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
 EXPOSE 80
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
