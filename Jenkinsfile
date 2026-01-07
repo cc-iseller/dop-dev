@@ -140,7 +140,7 @@ pipeline {
                 bat '''
             @echo off
             echo === STEP 1: LOGIN KE ACR ===
-            docker login iselleracr.azurecr.io -u iselleracr -p iworDtUFztr0KFTpfv2L5ZeRQ9vK8PdI3OoDrFgzx9+ACRCtXAap
+            docker login iselleracr.azurecr.io -u iselleracr -p ${AZURE_KEY}
 
             echo === STEP 2: BUILD IMAGE ===
             docker build -t iselleracr.azurecr.io/dop-dev:latest .
