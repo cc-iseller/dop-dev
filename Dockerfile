@@ -62,7 +62,9 @@ RUN chown -R www-data:www-data /var/www/html
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisor/supervisord.conf /etc/supervisord.conf
 
-# Install composer dependencies di dalam container
+# Tambahkan ini di dalam Dockerfile Anda
+RUN apt-get update && apt-get install -y git unzip libzip-dev && docker-php-ext-install zip
+
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 EXPOSE 80
