@@ -52,6 +52,8 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # ==============================
 WORKDIR /var/www/html
 
+RUN composer install --no-interaction --optimize-autoloader --no-dev
+
 COPY . .
 
 RUN chown -R www-data:www-data /var/www/html
