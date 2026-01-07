@@ -136,25 +136,13 @@ pipeline {
         // =================================================
         stage('Deploy to Azure') {
             steps {
-        // Menggunakan Batch Script untuk Jenkins di Windows
-                bat '''
-            @echo off
-            echo === STEP 1: LOGIN KE ACR ===
-            docker login iselleracr.azurecr.io -u iselleracr -p ${AZURE_KEY}
-
-            echo === STEP 2: BUILD IMAGE ===
-            docker build -t iselleracr.azurecr.io/dop-dev:latest .
-            docker tag iselleracr.azurecr.io/dop-dev:latest iselleracr.azurecr.io/dop-dev:%BUILD_NUMBER%
-
-            echo === STEP 3: PUSH KE REGISTRY ===
-            docker push iselleracr.azurecr.io/dop-dev:latest
-            docker push iselleracr.azurecr.io/dop-dev:%BUILD_NUMBER%
-
-            echo === SELESAI ===
-            echo Azure Web App akan otomatis update melalui Webhook.
-        '''
+        withCredentials([string(credentialsId: 'ACR_PASSWORD_KEY', variable: 'ACR_PW')]) {
+            bat "docker login iselleracr.azurecr.io -u iselleracr -p %ACR_PW%"
+            bat "docker build -t iselleracr.azurecr.io/dop-dev:latest ."
+            bat "docker push iselleracr.azurecr.io/dop-dev:latest"
             }
-     }   
+        }
+    }
 
         // =================================================
         stage('Health Check') {
