@@ -40,3 +40,6 @@ Route::middleware(['web'])->group(function () {
         ->middleware('auth')
         ->name('setup.store.store');
 });
+
+// Route::get('/demo', [DemoController::class, 'start'])->name('demo.start');
+// Route::post('/demo/reset', [DemoController::class, 'reset'])->name('demo.reset');
