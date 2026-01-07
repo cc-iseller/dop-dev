@@ -134,19 +134,27 @@ pipeline {
         }
 
         // =================================================
-        stage('Deploy to Azure Web App') {
+        stage('Deploy to Azure') {
             steps {
-                bat """
-                echo === DEPLOY TO AZURE WEB APP ===
+        // Menggunakan Batch Script untuk Jenkins di Windows
+                bat '''
+            @echo off
+            echo === STEP 1: LOGIN KE ACR ===
+            docker login iselleracr.azurecr.io -u iselleracr -p iworDtUFztr0KFTpfv2L5ZeRQ9vK8PdI3OoDrFgzx9+ACRCtXAap
 
-                "%AZ_CLI%" webapp config container set ^
-                  --resource-group %AZ_RESOURCE_GROUP% ^
-                  --name %AZ_WEBAPP_NAME% ^
-                  --docker-custom-image-name %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%IMAGE_TAG% ^
-                  --docker-registry-server-url https://%ACR_LOGIN_SERVER%
-                """
+            echo === STEP 2: BUILD IMAGE ===
+            docker build -t iselleracr.azurecr.io/dop-dev:latest .
+            docker tag iselleracr.azurecr.io/dop-dev:latest iselleracr.azurecr.io/dop-dev:%BUILD_NUMBER%
+
+            echo === STEP 3: PUSH KE REGISTRY ===
+            docker push iselleracr.azurecr.io/dop-dev:latest
+            docker push iselleracr.azurecr.io/dop-dev:%BUILD_NUMBER%
+
+            echo === SELESAI ===
+            echo Azure Web App akan otomatis update melalui Webhook.
+        '''
             }
-        }
+     }   
 
         // =================================================
         stage('Health Check') {
