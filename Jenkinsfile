@@ -134,12 +134,16 @@ pipeline {
         }
 
         // =================================================
-        stage('Deploy to Azure') {
-            steps {
-        withCredentials([string(credentialsId: 'ACR_PASSWORD_KEY', variable: 'ACR_PW')]) {
-            bat "docker login iselleracr.azurecr.io -u iselleracr -p %ACR_PW%"
-            bat "docker build -t iselleracr.azurecr.io/dop-dev:latest ."
-            bat "docker push iselleracr.azurecr.io/dop-dev:latest"
+       stage('Deploy to Azure') {
+        steps {
+        // Memanggil secret dari Jenkins Credentials secara aman
+        withCredentials([string(credentialsId: 'ACR_PASSWORD', variable: 'ACR_PW')]) {
+            bat """
+                @echo off
+                docker login iselleracr.azurecr.io -u iselleracr -p %ACR_PW%
+                docker build -t iselleracr.azurecr.io/dop-dev:latest .
+                docker push iselleracr.azurecr.io/dop-dev:latest
+            """
             }
         }
     }
