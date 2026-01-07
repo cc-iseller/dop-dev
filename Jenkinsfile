@@ -150,14 +150,21 @@ pipeline {
 
         // =================================================
         stage('Health Check') {
-            steps {
-                bat """
-                echo === HEALTH CHECK ===
-                timeout /t 25
-                curl http://%AZ_WEBAPP_NAME%.azurewebsites.net
-                """
-            }
-        }
+        steps {
+        bat """
+            @echo off
+            echo === HEALTH CHECK ===
+            
+            :: Mengganti timeout /t karena tidak didukung di Jenkins non-interaktif
+            echo Menunggu 30 detik agar container siap...
+            ping 127.0.0.1 -n 30 > nul
+            
+            :: Menggunakan URL baru yang Anda berikan
+            echo Menghubungi aplikasi di Azure...
+            curl -I https://iseller-as-c2fzhrg2hse8cngn.indonesiacentral-01.azurewebsites.net
+        """
+       }
+    }
 
         // =================================================
         stage('Cleanup Local Docker') {
